@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>高中物理实验室 · 平抛运动</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    font-family: "Microsoft YaHei", sans-serif;
+    background: #eef4fb; color: #20334d;
+  }
+  main { max-width: 1000px; margin: auto; }
+  h1 { margin-bottom: 8px; }
+  .card {
+    background: white; padding: 22px;
+    border-radius: 16px; margin-top: 18px;
+  }
+  .controls { display: flex; flex-wrap: wrap; gap: 24px; }
+  label { display: block; line-height: 2; }
+  input[type="range"] { width: 220px; cursor: pointer; }
+  button {
+    border: 0; border-radius: 8px; padding: 12px 22px;
+    margin: 14px 8px 0 0; background: #2563eb;
+    color: white; font-size: 16px; cursor: pointer;
+  }
+  button.secondary { background: #52647c; }
+  svg { width: 100%; display: block; background: #f8fbff; }
+  .data { display: flex; flex-wrap: wrap; gap: 20px; line-height: 2; }
+  .note { color: #52647c; line-height: 1.8; }
+</style>
+</head>
+<body>
+<main>
+  <h1>高中物理实验室</h1>
+  <p>平抛运动：水平方向匀速运动，竖直方向自由落体。</p>
+
+  <section class="card">
+    <div class="controls">
+      <label>
+        水平初速度：<strong id="speedText"></strong> m/s<br>
+        <input id="speed" type="range" min="1" max="15"
+               step="0.5" value="6">
+      </label>
+      <label>
+        抛出高度：<strong id="heightText"></strong> m<br>
+        <input id="height" type="range" min="5" max="40"
+               step="1" value="20">
+      </label>
+    </div>
+    <label>
+      <input id="vectors" type="checkbox" checked>
+      显示水平、竖直速度分量
+    </label>
+    <button id="play">开始实验</button>
+    <button id="reset" class="secondary">重新开始</button>
+    <p class="note">
+      模型：忽略空气阻力，重力加速度 g = 9.8 m/s²。
+      调整参数会重置实验。
+    </p>
+  </section>
+
+  <section class="card">
+    <svg id="scene" viewBox="0 0 900 470"
+         role="img" aria-label="平抛运动轨迹与速度分解">
+      <defs>
+        <marker id="blueArrow" markerWidth="8" markerHeight="8"
+                refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#2563eb"/>
+        </marker>
+        <marker id="redArrow" markerWidth="8" markerHeight="8"
+                refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#dc2626"/>
+        </marker>
+      </defs>
+      <text x="60" y="28" fill="#52647c">单位：m；横纵坐标比例相同</text>
+      <g id="grid"></g>
+      <line x1="60" y1="420" x2="850" y2="420"
+            stroke="#52647c" stroke-width="3"/>
+      <text x="800" y="455" fill="#52647c">水平位移 x</text>
+      <text x="12" y="55" fill="#52647c">高度</text>
+      <line id="platform" stroke="#52647c" stroke-width="5"/>
+      <path id="fullPath" fill="none" stroke="#b9c9dd"
+            stroke-width="2" stroke-dasharray="6 6"/>
+      <path id="trail" fill="none" stroke="#2563eb" stroke-width="3"/>
+      <line id="vx" stroke="#2563eb" stroke-width="3"
+            marker-end="url(#blueArrow)"/>
+      <line id="vy" stroke="#dc2626" stroke-width="3"
+            marker-end="url(#redArrow)"/>
+      <circle id="ball" r="9" fill="#f59e0b"/>
+      <text x="600" y="28" fill="#2563eb">蓝色：水平速度</text>
+      <text x="600" y="52" fill="#dc2626">红色：竖直速度</text>
+    </svg>
+    <div class="data">
+      <span>时间：<strong id="timeText"></strong> s</span>
+      <span>水平位移：<strong id="xText"></strong> m</span>
+      <span>下降距离：<strong id="dropText"></strong> m</span>
+      <span>竖直速率：<strong id="vyText"></strong> m/s</span>
+    </div>
+    <p id="result" class="note"></p>
+  </section>
+
+  <section class="card note">
+    <h2>课堂探究</h2>
+    <p>① 高度不变，只改变水平初速度，落地时间是否变化？</p>
+    <p>② 初速度不变，增大抛出高度，水平射程怎样变化？</p>
+    <p>③ 暂停实验，观察两个方向的速度分量，哪个保持不变？</p>
+    <p>水平位移：x = v₀t；下降距离：Δy = ½gt²；竖直速率：vᵧ = gt。</p>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const g = 9.8;
+let t = 0, running = false, lastTime = null;
+
+function parameters() {
+  const v = Number($("speed").value);
+  const h = Number($("height").value);
+  return { v, h, total: Math.sqrt(2 * h / g) };
+}
+
+function attributes(id, values) {
+  for (const [key, value] of Object.entries(values)) {
+    $(id).setAttribute(key, value);
+  }
+}
+
+function draw() {
+  const { v, h, total } = parameters();
+  const range = v * total;
+  const scale = Math.min(720 / range, 330 / h);
+  const point = time => ({
+    x: 60 + v * time * scale,
+    y: 420 - (h - 0.5 * g * time * time) * scale
+  });
+  const path = end => {
+    let d = "";
+    for (let i = 0; i <= 100; i++) {
+      const p = point(end * i / 100);
+      d += `${i === 0 ? "M" : "L"}${p.x},${p.y} `;
+    }
+    return d;
+  };
+
+  $("speedText").textContent = v.toFixed(1);
+  $("heightText").textContent = h.toFixed(0);
+
+  let grid = "";
+  for (let x = 0; x <= range + 0.01; x += 5) {
+    const px = 60 + x * scale;
+    grid += `<line x1="${px}" y1="70" x2="${px}" y2="420"
+      stroke="#e1e9f3"/><text x="${px}" y="442"
+      text-anchor="middle" fill="#52647c" font-size="13">${x}</text>`;
+  }
+  for (let y = 0; y <= h; y += 5) {
+    const py = 420 - y * scale;
+    grid += `<line x1="60" y1="${py}" x2="850" y2="${py}"
+      stroke="#e1e9f3"/><text x="48" y="${py + 5}"
+      text-anchor="end" fill="#52647c" font-size="13">${y}</text>`;
+  }
+  $("grid").innerHTML = grid;
+
+  const p = point(t);
+  const start = point(0);
+  attributes("platform", { x1: 25, y1: start.y, x2: 60, y2: start.y });
+  attributes("fullPath", { d: path(total) });
+  attributes("trail", { d: path(t) });
+  attributes("ball", { cx: p.x, cy: p.y });
+
+  const show = $("vectors").checked;
+  attributes("vx", {
+    x1: p.x, y1: p.y, x2: p.x + v * 4, y2: p.y,
+    visibility: show ? "visible" : "hidden"
+  });
+  attributes("vy", {
+    x1: p.x, y1: p.y, x2: p.x, y2: p.y + g * t * 4,
+    visibility: show && t > 0 ? "visible" : "hidden"
+  });
+
+  $("timeText").textContent = t.toFixed(2);
+  $("xText").textContent = (v * t).toFixed(2);
+  $("dropText").textContent = (0.5 * g * t * t).toFixed(2);
+  $("vyText").textContent = (g * t).toFixed(2);
+  $("result").textContent =
+    `预计落地时间：${total.toFixed(2)} s；水平射程：${range.toFixed(2)} m。`;
+}
+
+function reset() {
+  running = false;
+  t = 0;
+  lastTime = null;
+  $("play").textContent = "开始实验";
+  draw();
+}
+
+$("play").onclick = () => {
+  if (t >= parameters().total) t = 0;
+  running = !running;
+  lastTime = null;
+  $("play").textContent = running ? "暂停实验" : "继续实验";
+  draw();
+};
+$("reset").onclick = reset;
+$("speed").oninput = reset;
+$("height").oninput = reset;
+$("vectors").onchange = draw;
+
+function animate(now) {
+  if (running) {
+    if (lastTime !== null) {
+      t = Math.min(t + Math.min((now - lastTime) / 1000, 0.05),
+                   parameters().total);
+    }
+    lastTime = now;
+    if (t >= parameters().total) {
+      running = false;
+      $("play").textContent = "再次实验";
+    }
+    draw();
+  }
+  requestAnimationFrame(animate);
+}
+
+draw();
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>
